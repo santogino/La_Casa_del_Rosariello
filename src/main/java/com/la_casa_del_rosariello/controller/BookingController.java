@@ -1,0 +1,158 @@
+package com.la_casa_del_rosariello.controller;
+
+import com.la_casa_del_rosariello.dto.BookingRequestDTO;
+import com.la_casa_del_rosariello.dto.BookingResponseDTO;
+import com.la_casa_del_rosariello.dto.DisponibilitaResponseDTO;
+import com.la_casa_del_rosariello.dto.PrezzoResponseDTO;
+import com.la_casa_del_rosariello.entity.Booking;
+import com.la_casa_del_rosariello.exception.BookingConflictException;
+import com.la_casa_del_rosariello.exception.BookingNotFoundException;
+import com.la_casa_del_rosariello.exception.InvalidGuestNumberException;
+import com.la_casa_del_rosariello.service.BookingService;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/bookings")
+public class BookingController {
+
+    @Autowired
+    private BookingService bookingService;
+
+    // --- Endpoint per il Prezzo per Notte ---
+    @GetMapping("/prezzo")
+    public ResponseEntity<PrezzoResponseDTO> getPrezzoPerNotte() {
+        double prezzo = bookingService.getPrezzoPerNotte();
+        return ResponseEntity.ok(new PrezzoResponseDTO(prezzo));
+    }
+
+    // --- Endpoint per la Verifica Disponibilità ---
+    @GetMapping("/disponibilita")
+    public ResponseEntity<DisponibilitaResponseDTO> verificaDisponibilita(
+            @RequestParam("dataInizio") LocalDate dataInizio,
+            @RequestParam("dataFine") LocalDate dataFine) {
+
+        // Controllo base sulle date prima di passare al Service
+        if (dataFine.isBefore(dataInizio) || dataFine.isEqual(dataInizio)) {
+            // Puoi lanciare un'eccezione Bad Request o semplicemente ritornare false
+            // Per maggiore robustezza, un'eccezione custom qui sarebbe ideale
+            return ResponseEntity.badRequest().body(new DisponibilitaResponseDTO(false));
+        }
+
+        boolean disponibile = bookingService.verificaDisponibilita(dataInizio, dataFine);
+        return ResponseEntity.ok(new DisponibilitaResponseDTO(disponibile));
+    }
+
+    // --- Endpoint per Creare una Prenotazione ---
+    @PostMapping
+    public ResponseEntity<BookingResponseDTO> creaPrenotazione(@Valid @RequestBody BookingRequestDTO requestDTO) {
+        // Mappatura da DTO a Entità
+        Booking nuovaPrenotazione = new Booking();
+        nuovaPrenotazione.setDataInizio(requestDTO.getDataInizio());
+        nuovaPrenotazione.setDataFine(requestDTO.getDataFine());
+        nuovaPrenotazione.setOspiteNome(requestDTO.getNomeOspite());
+        nuovaPrenotazione.setOspiteCognome(requestDTO.getCognomeOspite());
+        nuovaPrenotazione.setOspiteEmail(requestDTO.getEmailOspite());
+        nuovaPrenotazione.setNumeroOspiti(requestDTO.getNumeroOspiti());
+        nuovaPrenotazione.setNote(requestDTO.getNote());
+        // Lo stato e la data di creazione sono gestiti nell'entità/service
+
+        try {
+            Booking prenotazioneSalvata = bookingService.createdBooking(nuovaPrenotazione);
+
+            // Mappatura da Entità a Response DTO
+            BookingResponseDTO responseDTO = mapToBookingResponseDTO(prenotazioneSalvata);
+            return new ResponseEntity<>(responseDTO, HttpStatus.CREATED); // 201 Created
+        } catch (InvalidGuestNumberException | BookingConflictException | IllegalArgumentException e) {
+            // Questi errori verranno catturati dal @ControllerAdvice per ritornare un 400 o 409
+            throw e;
+        }
+    }
+
+    // --- Endpoint per Visualizzare i Dettagli di una Singola Prenotazione ---
+    @GetMapping("/{id}")
+    public ResponseEntity<BookingResponseDTO> getPrenotazioneById(@PathVariable Long id) {
+        Booking booking = bookingService.findBookingById(id)
+                .orElseThrow(() -> new BookingNotFoundException("Prenotazione non trovata con ID: " + id));
+
+        BookingResponseDTO responseDTO = mapToBookingResponseDTO(booking);
+        return ResponseEntity.ok(responseDTO); // 200 OK
+    }
+
+    // --- Endpoint per Aggiornare una Prenotazione Esistente ---
+    @PutMapping("/{id}")
+    public ResponseEntity<BookingResponseDTO> aggiornaPrenotazione(
+            @PathVariable Long id,
+            @Valid @RequestBody BookingRequestDTO requestDTO) {
+
+        // Mappatura da DTO a Entità (per i dati aggiornati)
+        Booking prenotazioneAggiornata = new Booking();
+        // NON impostare l'ID qui, l'ID è preso dal @PathVariable
+        prenotazioneAggiornata.setDataInizio(requestDTO.getDataInizio());
+        prenotazioneAggiornata.setDataFine(requestDTO.getDataFine());
+        prenotazioneAggiornata.setOspiteNome(requestDTO.getNomeOspite());
+        prenotazioneAggiornata.setOspiteCognome(requestDTO.getCognomeOspite());
+        prenotazioneAggiornata.setOspiteEmail(requestDTO.getEmailOspite());
+        prenotazioneAggiornata.setNumeroOspiti(requestDTO.getNumeroOspiti());
+        prenotazioneAggiornata.setNote(requestDTO.getNote());
+        // Lo stato non viene aggiornato direttamente tramite questo DTO, ma tramite endpoint specifici se necessario
+
+        try {
+            Booking bookingAggiornata = bookingService.aggiornaPrenotazione(id, prenotazioneAggiornata);
+            BookingResponseDTO responseDTO = mapToBookingResponseDTO(bookingAggiornata);
+            return ResponseEntity.ok(responseDTO); // 200 OK
+        } catch (BookingNotFoundException | InvalidGuestNumberException | BookingConflictException | IllegalArgumentException e) {
+            throw e;
+        }
+    }
+
+    // --- Endpoint per Cancellare una Prenotazione (cambia stato) ---
+    @PatchMapping("/{id}/cancella") // PATCH è appropriato per un aggiornamento parziale/cambio di stato
+    public ResponseEntity<BookingResponseDTO> cancellaPrenotazione(@PathVariable Long id) {
+        try {
+            Booking bookingCancellata = bookingService.cancellaPrenotazione(id);
+            BookingResponseDTO responseDTO = mapToBookingResponseDTO(bookingCancellata);
+            return ResponseEntity.ok(responseDTO); // 200 OK
+        } catch (BookingNotFoundException e) {
+            throw e;
+        }
+    }
+
+    // --- Endpoint (Admin) per visualizzare tutte le prenotazioni ---
+    // Potrebbe richiedere Spring Security per essere protetto
+    @GetMapping
+    public ResponseEntity<List<BookingResponseDTO>> getAllPrenotazioni() {
+        List<Booking> bookings = bookingService.findAllBookings();
+        List<BookingResponseDTO> responseDTOs = bookings.stream()
+                .map(this::mapToBookingResponseDTO) // Usa il metodo di mapping
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(responseDTOs);
+    }
+
+    // --- Metodo di Mappatura da Entity a DTO ---
+    private BookingResponseDTO mapToBookingResponseDTO(Booking booking) {
+        // Calcola il prezzo totale per il DTO di risposta
+        double prezzoTotale = bookingService.calcolaPrezzoTotale(booking.getDataInizio(), booking.getDataFine());
+
+        return new BookingResponseDTO(
+                booking.getId(),
+                booking.getDataInizio(),
+                booking.getDataFine(),
+                booking.getOspiteNome(),
+                booking.getOspiteCognome(),
+                booking.getOspiteEmail(),
+                booking.getNumeroOspiti(),
+                booking.getStatoPrenotazione(),
+                booking.getDataCreazione(),
+                booking.getNote(),
+                prezzoTotale
+        );
+    }
+}

@@ -10,14 +10,14 @@ import java.util.Optional;
 
 public interface BookingRepository extends JpaRepository<Booking, Long> {
     //Quando un'entità Booking viene salvata per la prima volta nel database, spesso è utile registrarne il momento esatto della creazione. Questo è il ruolo del campo createdAt (LocalDateTime).
-    List<Booking> findByStartDateBeforeAndEndDateAfterAndStatus(
-            LocalDate newEndDate,
-            LocalDate newStartDate,
-            StatoPrenotazione confirmedStatus
+    List<Booking> findByDataInizioBeforeAndDataFineAfterAndStatoPrenotazione(
+            LocalDate dataFineRichiesta,
+            LocalDate dataInizioRichiesta,
+            StatoPrenotazione statoConfermato
     );
 
-    List<Booking> findByGuestEmail(String guestEmail);
-    List<Booking> findByStatus(StatoPrenotazione status);
+    List<Booking> findByOspiteEmail(String ospiteEmail);
+    List<Booking> findByStatoPrenotazione(StatoPrenotazione statoPrenotazione);
     // Per un ospite che vede la propria prenotazione
-    Optional<Booking> findByIdAndGuestEmail(Long id, String guestEmail);
+    Optional<Booking> findByIdAndOspiteEmail(Long id, String ospiteEmail);
 }

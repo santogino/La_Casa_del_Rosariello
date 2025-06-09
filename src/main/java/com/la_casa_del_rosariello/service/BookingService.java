@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -49,7 +48,7 @@ public class BookingService {
 
     public boolean verificaDisponibilita(LocalDate dataInizioRichiesta, LocalDate dataFineRichiesta) {
 
-        List<Booking> prenotazioniInConflitto = bookingRepository.findByStartDateBeforeAndEndDateAfterAndStatus(
+        List<Booking> prenotazioniInConflitto = bookingRepository.findByDataInizioBeforeAndDataFineAfterAndStatoPrenotazione(
                 dataFineRichiesta,
                 dataInizioRichiesta,
                 StatoPrenotazione.CONFERMATA
@@ -69,7 +68,7 @@ public class BookingService {
         if (!prenotazioneEsistente.getDataInizio().equals(prenotazioneAggiornata.getDataInizio()) ||
                 !prenotazioneEsistente.getDataFine().equals(prenotazioneAggiornata.getDataFine())) {
 
-            List<Booking> prenotazioniInConflitto = bookingRepository.findByStartDateBeforeAndEndDateAfterAndStatus(
+            List<Booking> prenotazioniInConflitto = bookingRepository.findByDataInizioBeforeAndDataFineAfterAndStatoPrenotazione(
                     prenotazioneAggiornata.getDataFine(),
                     prenotazioneAggiornata.getDataInizio(),
                     StatoPrenotazione.CONFERMATA
