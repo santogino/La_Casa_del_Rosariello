@@ -1,5 +1,6 @@
 package com.la_casa_del_rosariello.service;
 
+import com.la_casa_del_rosariello.dto.BookingRequestDTO;
 import com.la_casa_del_rosariello.entity.Booking;
 import com.la_casa_del_rosariello.entity.StatoPrenotazione;
 import com.la_casa_del_rosariello.exception.BookingConflictException;
@@ -47,46 +48,78 @@ public class BookingService {
     }
 
     public boolean verificaDisponibilita(LocalDate dataInizioRichiesta, LocalDate dataFineRichiesta) {
-
-        List<Booking> prenotazioniInConflitto = bookingRepository.findByDataInizioBeforeAndDataFineAfterAndStatoPrenotazione(
+        // 1. Controlla le prenotazioni interne (confermate/pendenti)
+        List<Booking> prenotazioniInConflittoInterne = bookingRepository.findOverlappingBookings(
                 dataFineRichiesta,
                 dataInizioRichiesta,
-                StatoPrenotazione.CONFERMATA
+                StatoPrenotazione.CONFERMATA // O anche PENDENTE, a seconda della tua politica
         );
+        if (!prenotazioniInConflittoInterne.isEmpty()) {
+            return false; // Ci sono prenotazioni interne che si sovrappongono
+        }
 
-        return prenotazioniInConflitto.isEmpty();
+        return true; // Nessuna sovrapposizione trovata
     }
 
-    public Booking aggiornaPrenotazione(Long id, Booking prenotazioneAggiornata) {
-        Booking prenotazioneEsistente = bookingRepository.findById(id)
-                .orElseThrow(() -> new BookingNotFoundException("Prenotazione non trovata con ID: " + id));
 
-        if (prenotazioneAggiornata.getNumeroOspiti() > 2) {
-            throw new InvalidGuestNumberException("Il numero massimo di ospiti consentito è 2 !");
-        }
+    public Booking aggiornaPrenotazione(Long id, BookingRequestDTO newDatiPrenotazione) {
+        Booking existingBooking = bookingRepository.findById(id)
+                .orElseThrow(() -> new BookingNotFoundException("Prenotazione con ID " + id + " non trovata."));
 
-        if (!prenotazioneEsistente.getDataInizio().equals(prenotazioneAggiornata.getDataInizio()) ||
-                !prenotazioneEsistente.getDataFine().equals(prenotazioneAggiornata.getDataFine())) {
+        // Preleva i vecchi dati per confrontare
+        LocalDate oldDataInizio = existingBooking.getDataInizio();
+        LocalDate oldDataFine = existingBooking.getDataFine();
+        StatoPrenotazione oldStato = existingBooking.getStatoPrenotazione();
 
-            List<Booking> prenotazioniInConflitto = bookingRepository.findByDataInizioBeforeAndDataFineAfterAndStatoPrenotazione(
-                    prenotazioneAggiornata.getDataFine(),
-                    prenotazioneAggiornata.getDataInizio(),
-                    StatoPrenotazione.CONFERMATA
-            );
+        // Controlla se le date o lo stato (se CONFERMATA/PENDENTE) sono cambiati in modo da richiedere una verifica
+        boolean datesChanged = !oldDataInizio.isEqual(newDatiPrenotazione.getDataInizio()) ||
+                !oldDataFine.isEqual(newDatiPrenotazione.getDataFine());
 
-            if (!prenotazioniInConflitto.isEmpty()) {
-                throw new BookingConflictException("Le date aggiornate si sovrappongono a una prenotazione esistente.");
+        boolean statusChangingToConfirmedOrPending =
+                (newDatiPrenotazione.getStatoPrenotazione() == StatoPrenotazione.CONFERMATA && oldStato != StatoPrenotazione.CONFERMATA) ||
+                        (newDatiPrenotazione.getStatoPrenotazione() == StatoPrenotazione.PENDENTE && oldStato != StatoPrenotazione.PENDENTE);
+
+        // Se le date sono cambiate O lo stato sta passando a CONFERMATA/PENDENTE (necessita di bloccare date)
+        if (datesChanged || statusChangingToConfirmedOrPending) {
+            // Esegui la verifica della disponibilità escludendo la prenotazione attuale
+            if (!verificaDisponibilitaEscludendo(newDatiPrenotazione.getDataInizio(), newDatiPrenotazione.getDataFine(), id)) {
+                throw new BookingConflictException("Le date " + newDatiPrenotazione.getDataInizio() + " - " + newDatiPrenotazione.getDataFine() + " sono già occupate da un'altra prenotazione.");
             }
         }
-        prenotazioneEsistente.setDataInizio(prenotazioneAggiornata.getDataInizio());
-        prenotazioneEsistente.setDataFine(prenotazioneAggiornata.getDataFine());
-        prenotazioneEsistente.setOspiteNome(prenotazioneAggiornata.getOspiteNome());
-        prenotazioneEsistente.setOspiteCognome(prenotazioneAggiornata.getOspiteCognome());
-        prenotazioneEsistente.setOspiteEmail(prenotazioneAggiornata.getOspiteEmail());
-        prenotazioneEsistente.setNumeroOspiti(prenotazioneAggiornata.getNumeroOspiti());
-        prenotazioneEsistente.setNote(prenotazioneAggiornata.getNote());
 
-        return bookingRepository.save(prenotazioneEsistente);
+        // Validazione del numero di ospiti (se cambiasse e fosse fuori range)
+        if (newDatiPrenotazione.getNumeroOspiti() < 1 || newDatiPrenotazione.getNumeroOspiti() > 2) {
+            throw new InvalidGuestNumberException("Il numero di ospiti deve essere compreso tra 1 e 2.");
+        }
+
+        // Aggiorna i campi della prenotazione esistente
+        existingBooking.setDataInizio(newDatiPrenotazione.getDataInizio());
+        existingBooking.setDataFine(newDatiPrenotazione.getDataFine());
+        existingBooking.setOspiteNome(newDatiPrenotazione.getNomeOspite());
+        existingBooking.setOspiteCognome(newDatiPrenotazione.getCognomeOspite());
+        existingBooking.setOspiteEmail(newDatiPrenotazione.getEmailOspite());
+        existingBooking.setNumeroOspiti(newDatiPrenotazione.getNumeroOspiti());
+        existingBooking.setStatoPrenotazione(newDatiPrenotazione.getStatoPrenotazione());
+        existingBooking.setNote(newDatiPrenotazione.getNote());
+
+        // Non aggiornare dataCreazione, è gestito da @PrePersist
+
+        return bookingRepository.save(existingBooking);
+    }
+
+    private boolean verificaDisponibilitaEscludendo(LocalDate dataInizioRichiesta, LocalDate dataFineRichiesta, Long excludedBookingId) {
+        // Controlla le prenotazioni interne (confermate/pendenti), escludendo quella in fase di aggiornamento
+        List<Booking> prenotazioniInConflittoInterne = bookingRepository.findOverlappingBookingsExcludingId(
+                dataFineRichiesta,
+                dataInizioRichiesta,
+                StatoPrenotazione.CONFERMATA,
+                excludedBookingId
+        );
+        if (!prenotazioniInConflittoInterne.isEmpty()) {
+            return false;
+        }
+
+        return true;
     }
 
     public Booking cancellaPrenotazione(Long id) {

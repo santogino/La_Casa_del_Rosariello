@@ -1,5 +1,6 @@
 package com.la_casa_del_rosariello.dto;
 
+import com.la_casa_del_rosariello.entity.StatoPrenotazione;
 import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
@@ -28,6 +29,9 @@ public class BookingRequestDTO {
     private int numeroOspiti;
 
     private String note; // Campo opzionale
+
+    @NotNull // Se lo stato è sempre obbligatorio nella richiesta
+    private StatoPrenotazione statoPrenotazione;
 
     // Costruttore senza argomenti
     public BookingRequestDTO() {}
@@ -64,4 +68,12 @@ public class BookingRequestDTO {
 
     public String getNote() { return note; }
     public void setNote(String note) { this.note = note; }
+
+    public StatoPrenotazione getStatoPrenotazione() {
+        return statoPrenotazione;
+    }
+
+    public void setStatoPrenotazione(StatoPrenotazione statoPrenotazione) {
+        this.statoPrenotazione = statoPrenotazione;
+    }
 }

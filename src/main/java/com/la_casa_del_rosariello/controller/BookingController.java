@@ -26,6 +26,25 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
+    // Metodo di utilità per la mappatura DTO (assicurati che sia corretto come discusso)
+    private BookingResponseDTO mapToBookingResponseDTO(Booking booking) {
+        BookingResponseDTO dto = new BookingResponseDTO();
+        dto.setId(booking.getId());
+        dto.setDataInizio(booking.getDataInizio());
+        dto.setDataFine(booking.getDataFine());
+        dto.setNomeOspite(booking.getOspiteNome());
+        dto.setCognomeOspite(booking.getOspiteCognome());
+        dto.setEmailOspite(booking.getOspiteEmail());
+        dto.setNumeroOspiti(booking.getNumeroOspiti());
+        dto.setNote(booking.getNote());
+        dto.setDataCreazione(booking.getDataCreazione());
+
+        dto.setStato(booking.getStatoPrenotazione());
+
+        dto.setPrezzoTotale(bookingService.calcolaPrezzoTotale(booking.getDataInizio(), booking.getDataFine()));
+        return dto;
+    }
+
     // --- Endpoint per il Prezzo per Notte ---
     @GetMapping("/prezzo")
     public ResponseEntity<PrezzoResponseDTO> getPrezzoPerNotte() {
@@ -41,8 +60,7 @@ public class BookingController {
 
         // Controllo base sulle date prima di passare al Service
         if (dataFine.isBefore(dataInizio) || dataFine.isEqual(dataInizio)) {
-            // Puoi lanciare un'eccezione Bad Request o semplicemente ritornare false
-            // Per maggiore robustezza, un'eccezione custom qui sarebbe ideale
+
             return ResponseEntity.badRequest().body(new DisponibilitaResponseDTO(false));
         }
 
@@ -90,25 +108,18 @@ public class BookingController {
     @PutMapping("/{id}")
     public ResponseEntity<BookingResponseDTO> aggiornaPrenotazione(
             @PathVariable Long id,
-            @Valid @RequestBody BookingRequestDTO requestDTO) {
-
-        // Mappatura da DTO a Entità (per i dati aggiornati)
-        Booking prenotazioneAggiornata = new Booking();
-        // NON impostare l'ID qui, l'ID è preso dal @PathVariable
-        prenotazioneAggiornata.setDataInizio(requestDTO.getDataInizio());
-        prenotazioneAggiornata.setDataFine(requestDTO.getDataFine());
-        prenotazioneAggiornata.setOspiteNome(requestDTO.getNomeOspite());
-        prenotazioneAggiornata.setOspiteCognome(requestDTO.getCognomeOspite());
-        prenotazioneAggiornata.setOspiteEmail(requestDTO.getEmailOspite());
-        prenotazioneAggiornata.setNumeroOspiti(requestDTO.getNumeroOspiti());
-        prenotazioneAggiornata.setNote(requestDTO.getNote());
-        // Lo stato non viene aggiornato direttamente tramite questo DTO, ma tramite endpoint specifici se necessario
+            @Valid @RequestBody BookingRequestDTO requestDTO) { // Qui ricevi il DTO corretto
 
         try {
-            Booking bookingAggiornata = bookingService.aggiornaPrenotazione(id, prenotazioneAggiornata);
+            // Passa DIRETTAMENTE il 'requestDTO' al service.
+            Booking bookingAggiornata = bookingService.aggiornaPrenotazione(id, requestDTO);
+
             BookingResponseDTO responseDTO = mapToBookingResponseDTO(bookingAggiornata);
             return ResponseEntity.ok(responseDTO); // 200 OK
-        } catch (BookingNotFoundException | InvalidGuestNumberException | BookingConflictException | IllegalArgumentException e) {
+        } catch (BookingNotFoundException | InvalidGuestNumberException | BookingConflictException |
+                 IllegalArgumentException e) {
+            // Qui stai ri-lanciando l'eccezione, il che è corretto se hai un @ControllerAdvice
+            // per gestirle e mappare a risposte HTTP appropriate (es. 404, 400, 409).
             throw e;
         }
     }
@@ -134,25 +145,5 @@ public class BookingController {
                 .map(this::mapToBookingResponseDTO) // Usa il metodo di mapping
                 .collect(Collectors.toList());
         return ResponseEntity.ok(responseDTOs);
-    }
-
-    // --- Metodo di Mappatura da Entity a DTO ---
-    private BookingResponseDTO mapToBookingResponseDTO(Booking booking) {
-        // Calcola il prezzo totale per il DTO di risposta
-        double prezzoTotale = bookingService.calcolaPrezzoTotale(booking.getDataInizio(), booking.getDataFine());
-
-        return new BookingResponseDTO(
-                booking.getId(),
-                booking.getDataInizio(),
-                booking.getDataFine(),
-                booking.getOspiteNome(),
-                booking.getOspiteCognome(),
-                booking.getOspiteEmail(),
-                booking.getNumeroOspiti(),
-                booking.getStatoPrenotazione(),
-                booking.getDataCreazione(),
-                booking.getNote(),
-                prezzoTotale
-        );
     }
 }
