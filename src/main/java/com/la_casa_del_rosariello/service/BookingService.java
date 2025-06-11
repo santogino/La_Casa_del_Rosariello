@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,22 +44,23 @@ public class BookingService {
         if (!verificaDisponibilita(newBooking.getDataInizio(), newBooking.getDataFine())) {
             throw new BookingConflictException("Le date selezionate non sono disponibili !");
         }
+        newBooking.setStatoPrenotazione(StatoPrenotazione.CONFERMATA);
 
         return bookingRepository.save(newBooking);
     }
 
     public boolean verificaDisponibilita(LocalDate dataInizioRichiesta, LocalDate dataFineRichiesta) {
-        // 1. Controlla le prenotazioni interne (confermate/pendenti)
-        List<Booking> prenotazioniInConflittoInterne = bookingRepository.findOverlappingBookings(
-                dataFineRichiesta,
-                dataInizioRichiesta,
-                StatoPrenotazione.CONFERMATA // O anche PENDENTE, a seconda della tua politica
-        );
-        if (!prenotazioniInConflittoInterne.isEmpty()) {
-            return false; // Ci sono prenotazioni interne che si sovrappongono
-        }
+        // Definisci gli stati che bloccano la disponibilità
+        List<StatoPrenotazione> statiInConflitto = Arrays.asList(StatoPrenotazione.CONFERMATA, StatoPrenotazione.PENDENTE);
 
-        return true; // Nessuna sovrapposizione trovata
+        List<Booking> prenotazioniInConflittoInterne = bookingRepository.findOverlappingBookings(
+                dataInizioRichiesta,
+                dataFineRichiesta,
+                statiInConflitto // Passa la lista di stati
+        );
+
+        // La logica ora è corretta: se la lista non è vuota, non è disponibile
+        return prenotazioniInConflittoInterne.isEmpty();
     }
 
 
@@ -108,18 +110,16 @@ public class BookingService {
     }
 
     private boolean verificaDisponibilitaEscludendo(LocalDate dataInizioRichiesta, LocalDate dataFineRichiesta, Long excludedBookingId) {
-        // Controlla le prenotazioni interne (confermate/pendenti), escludendo quella in fase di aggiornamento
+        // Riutilizza la stessa logica degli stati
+        List<StatoPrenotazione> statiInConflitto = Arrays.asList(StatoPrenotazione.CONFERMATA, StatoPrenotazione.PENDENTE);
+
         List<Booking> prenotazioniInConflittoInterne = bookingRepository.findOverlappingBookingsExcludingId(
-                dataFineRichiesta,
                 dataInizioRichiesta,
-                StatoPrenotazione.CONFERMATA,
+                dataFineRichiesta,
+                statiInConflitto, // Passa la lista di stati
                 excludedBookingId
         );
-        if (!prenotazioniInConflittoInterne.isEmpty()) {
-            return false;
-        }
-
-        return true;
+        return prenotazioniInConflittoInterne.isEmpty();
     }
 
     public Booking cancellaPrenotazione(Long id) {

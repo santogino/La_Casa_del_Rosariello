@@ -11,29 +11,18 @@ import java.util.List;
 import java.util.Optional;
 
 public interface BookingRepository extends JpaRepository<Booking, Long> {
-    // * Trova tutte le prenotazioni confermate che si sovrappongono a un dato intervallo di date.
-    //     * La logica di sovrapposizione è:
-    //     * (dataInizioRichiesta <= dataFinePrenotazioneEsistente) AND (dataFineRichiesta >= dataInizioPrenotazioneEsistente)
-    @Query("SELECT b FROM Booking b WHERE " +
-            "b.statoPrenotazione = :statoPrenotazioneConfermata AND " +
-            "b.dataInizio <= :dataFineRicerca AND " +
-            "b.dataFine >= :dataInizioRicerca")
-    List<Booking> findOverlappingBookings(
-            @Param("dataFineRicerca") LocalDate dataFineRicerca,
-            @Param("dataInizioRicerca") LocalDate dataInizioRicerca,
-            @Param("statoPrenotazioneConfermata") StatoPrenotazione statoPrenotazioneConfermata
-    );
+    @Query("SELECT b FROM Booking b WHERE b.dataInizio < :dataFine AND b.dataFine > :dataInizio AND b.statoPrenotazione IN :stati")
+    List<Booking> findOverlappingBookings(LocalDate dataInizio, LocalDate dataFine, List<StatoPrenotazione> stati);
 
     @Query("SELECT b FROM Booking b WHERE " +
-            "b.id <> :excludedBookingId AND " + // Condizione per escludere la prenotazione
-            "b.statoPrenotazione = :statoPrenotazioneConfermata AND " +
-            "b.dataInizio <= :dataFineRicerca AND " +
-            "b.dataFine >= :dataInizioRicerca")
+            "b.dataInizio < :dataFine AND b.dataFine > :dataInizio " +
+            "AND b.statoPrenotazione IN :stati " + // Controlla una lista di stati
+            "AND b.id <> :excludedBookingId")      // Esclude la prenotazione corrente
     List<Booking> findOverlappingBookingsExcludingId(
-            @Param("dataFineRicerca") LocalDate dataFineRicerca,
-            @Param("dataInizioRicerca") LocalDate dataInizioRicerca,
-            @Param("statoPrenotazioneConfermata") StatoPrenotazione statoPrenotazioneConfermata,
-            @Param("excludedBookingId") Long excludedBookingId
+            LocalDate dataFine,
+            LocalDate dataInizio,
+            List<StatoPrenotazione> stati,        // Accetta una lista di stati
+            Long excludedBookingId
     );
 
     List<Booking> findByOspiteEmail(String ospiteEmail);
