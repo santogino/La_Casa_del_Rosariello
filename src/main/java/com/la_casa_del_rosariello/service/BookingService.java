@@ -6,17 +6,24 @@ import com.la_casa_del_rosariello.entity.StatoPrenotazione;
 import com.la_casa_del_rosariello.exception.BookingConflictException;
 import com.la_casa_del_rosariello.exception.BookingNotFoundException;
 import com.la_casa_del_rosariello.exception.InvalidGuestNumberException;
+import com.la_casa_del_rosariello.dto.BookingResponseDTO;
 import com.la_casa_del_rosariello.repository.BookingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional
 public class BookingService {
 
     @Autowired
@@ -24,10 +31,20 @@ public class BookingService {
 
     private final double PREZZO_PER_NOTTE = 60;
 
-    public List<Booking> findAllBookings() {
-        return bookingRepository.findAll();
-    }
+    public Page<BookingResponseDTO> findAllBookings(Pageable pageable) {
+        // Logica di logging qui se necessaria, come discusso nel punto 3
+        Page<Booking> bookingPage = bookingRepository.findAll(pageable);
 
+        return bookingPage.map(booking -> {
+            // Esegui il mapping da Entity a DTO
+            BookingResponseDTO dto = new BookingResponseDTO();
+            dto.setId(booking.getId());
+            // Assicurati di mappare tutti gli altri campi rilevanti
+            // es: dto.setDataInizio(booking.getDataInizio());
+            // es: dto.setDataFine(booking.getDataFine());
+            return dto;
+        });
+    }
     public Optional<Booking> findBookingById(Long id) {
         return bookingRepository.findById(id);
     }

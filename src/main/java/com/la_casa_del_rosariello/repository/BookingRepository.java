@@ -2,6 +2,8 @@ package com.la_casa_del_rosariello.repository;
 
 import com.la_casa_del_rosariello.entity.Booking;
 import com.la_casa_del_rosariello.entity.StatoPrenotazione;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,5 +30,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByOspiteEmail(String ospiteEmail);
     List<Booking> findByStatoPrenotazione(StatoPrenotazione statoPrenotazione);
     // Per un ospite che vede la propria prenotazione
+
     Optional<Booking> findByIdAndOspiteEmail(Long id, String ospiteEmail);
+
+    Page<Booking> findAll(Pageable pageable);
 }
